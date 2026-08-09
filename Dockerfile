@@ -6,6 +6,7 @@ COPY VERSION ./VERSION
 COPY frontend/package.json frontend/pnpm-lock.yaml ./frontend/
 RUN corepack enable && corepack prepare pnpm@9 --activate \
     && cd frontend && pnpm install --frozen-lockfile
+COPY static ./static
 COPY frontend ./frontend
 RUN cd frontend && pnpm run build
 
