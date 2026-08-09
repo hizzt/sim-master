@@ -28,7 +28,6 @@ import {
   enabledPasswordTypesText,
   normalizePasswordInput,
 } from '../lib/passwordPolicy'
-import communityQrUrl from '../../../static/Community/Community_QQ_Light.png'
 
 type AuthMode = 'login' | 'setup'
 
@@ -54,32 +53,15 @@ function LogoMark() {
 
 function CommunityTooltip() {
   return (
-    <Tooltip
-      arrow
-      placement="top"
-      title={(
-        <Stack spacing={1} alignItems="center" sx={{ p: 1.25 }}>
-          <Box
-            component="img"
-            src={communityQrUrl}
-            alt="SimAdmin 社区"
-            sx={{
-              height: 132,
-              width: 'auto',
-              maxWidth: 240,
-              objectFit: 'contain',
-              borderRadius: 1,
-              bgcolor: '#fff',
-            }}
-          />
-          <Typography variant="caption" sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>扫码加入 QQ 群</Typography>
-        </Stack>
-      )}
+    <Link
+      href="https://github.com/techblack/sim-master"
+      target="_blank"
+      rel="noopener noreferrer"
+      underline="none"
+      color="inherit"
     >
-      <Link component="button" type="button" underline="none" color="inherit" sx={{ font: 'inherit' }}>
-        社区
-      </Link>
-    </Tooltip>
+      社区
+    </Link>
   )
 }
 
