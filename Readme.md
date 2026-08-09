@@ -29,12 +29,29 @@ image: ghcr.io/techblack/sim-master:latest
 
 ## 传统 systemd 安装
 
+仓库和 Release 均为私有资源，先用 `gh auth login` 登录有权限的 GitHub 账号，再执行：
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/techblack/sim-master/main/install_latest.sh | sudo sh
+case "$(uname -m)" in
+  x86_64|amd64) RELEASE_ARCH=x86_64 ;;
+  aarch64|arm64) RELEASE_ARCH=arm64 ;;
+  *) echo "unsupported architecture" >&2; exit 1 ;;
+esac
+
+mkdir -p /tmp/sim-master-release
+gh release download v1.1.7 \
+  --repo techblack/sim-master \
+  --pattern "sim-master-${RELEASE_ARCH}.tar.gz" \
+  --dir /tmp/sim-master-release
+sudo mkdir -p /opt/simadmin
+sudo tar -xzf "/tmp/sim-master-release/sim-master-${RELEASE_ARCH}.tar.gz" -C /opt/simadmin
+sudo install -m 0644 scripts/simadmin.service /etc/systemd/system/simadmin.service
+sudo systemctl daemon-reload
 sudo systemctl enable --now simadmin.service
+curl http://127.0.0.1:3000/api/health
 ```
 
-安装脚本保留 `simadmin` 兼容路径；如需自定义仓库、目录或服务名，可设置 `REPO`、`INSTALL_DIR`、`SERVICE_NAME` 环境变量。详细硬件依赖和卸载流程见 [`docs/install.md`](docs/install.md) 与 [`docs/environment.md`](docs/environment.md)。
+运行时保留 `simadmin` 兼容路径和服务名。公开镜像或自建 Release 镜像环境也可以运行 `sudo ./install_latest.sh`，脚本会按主机架构选择压缩包；可通过 `REPO`、`ASSET_URL`、`INSTALL_DIR`、`SERVICE_NAME` 覆盖默认值。详细硬件依赖和卸载流程见 [`docs/install.md`](docs/install.md) 与 [`docs/environment.md`](docs/environment.md)。
 
 ## 从源码构建
 

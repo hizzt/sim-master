@@ -13,7 +13,16 @@ SERVICE_URL="${SERVICE_URL:-${RAW_BASE}/main/scripts/simadmin.service}"
 MODEM_RECOVERY_SCRIPT_URL="${MODEM_RECOVERY_SCRIPT_URL:-${RAW_BASE}/main/scripts/simadmin-modem-recovery.sh}"
 MODEM_RECOVERY_SERVICE_URL="${MODEM_RECOVERY_SERVICE_URL:-${RAW_BASE}/main/scripts/simadmin-modem-recovery.service}"
 ASSET_URL="${ASSET_URL:-}"
-ASSET_NAME="${ASSET_NAME:-simadmin.tar.gz}"
+if [ -z "${ASSET_NAME:-}" ]; then
+  case "$(uname -m)" in
+    x86_64|amd64) ASSET_NAME="sim-master-x86_64.tar.gz" ;;
+    aarch64|arm64) ASSET_NAME="sim-master-arm64.tar.gz" ;;
+    *)
+      echo "error: unsupported release architecture: $(uname -m)" >&2
+      exit 1
+      ;;
+  esac
+fi
 SIMADMIN_INSTALL_LPAC="${SIMADMIN_INSTALL_LPAC:-1}"
 LPAC_REPO="${LPAC_REPO:-estkme-group/lpac}"
 LPAC_RELEASE_BASE_URL="${LPAC_RELEASE_BASE_URL:-https://github.com/${LPAC_REPO}/releases/latest/download}"
@@ -106,7 +115,7 @@ version_to_tag() {
 
 asset_url_from_tag() {
   tag="$1"
-  printf 'https://github.com/%s/releases/download/%s/simadmin.tar.gz\n' "$REPO" "$tag"
+  printf 'https://github.com/%s/releases/download/%s/%s\n' "$REPO" "$tag" "$ASSET_NAME"
 }
 
 repo_version() {
