@@ -15,6 +15,11 @@ sim-master 是一套面向 Debian 蜂窝 CPE、随身 WiFi、软路由和实验�
 - modem 请求头：`X-SimAdmin-Modem-Id`
 
 > 配置开关不等于实际能力。IMS、VoWiFi、语音和短信是否可用，最终取决于 modem 固件、SIM、运营商策略、网络出口和实际协议交互。
+<img width="1797" height="900" alt="image" src="https://github.com/user-attachments/assets/feffaf2b-ad93-45ae-9b74-9020ec6c5b66" />
+<img width="1797" height="899" alt="image" src="https://github.com/user-attachments/assets/968c6700-e65e-4da3-8beb-ce6413b8ff20" />
+<img width="1795" height="897" alt="image" src="https://github.com/user-attachments/assets/e4f0337c-4882-4ed8-b666-ae68e6c075f6" />
+<img width="1796" height="899" alt="image" src="https://github.com/user-attachments/assets/fc83f03e-6035-46cf-b20c-d9cfbad8eb74" />
+<img width="1790" height="895" alt="image" src="https://github.com/user-attachments/assets/9fc52307-e973-498a-8a97-889a532cb2d7" />
 
 ## 主要功能
 
