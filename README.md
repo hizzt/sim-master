@@ -1,14 +1,7 @@
 <div align="center">
-  <img src="./frontend/public/simadmin-logo.svg" width="96" alt="sim-master logo" />
-
   # sim-master
 
   面向 Linux 蜂窝设备的 SIM / eSIM、短信、网络与 VoWiFi 管理平台
-
-  [![License](https://img.shields.io/github/license/techblack/sim-master?style=flat-square)](./LICENSE)
-  [![Release](https://img.shields.io/github/v/release/techblack/sim-master?style=flat-square)](https://github.com/techblack/sim-master/releases)
-  [![Build](https://img.shields.io/github/actions/workflow/status/techblack/sim-master/release.yml?style=flat-square&label=release)](https://github.com/techblack/sim-master/actions/workflows/release.yml)
-  [![Platforms](https://img.shields.io/badge/platform-x86__64%20%7C%20arm64-blue?style=flat-square)](#release-与多架构构建)
 </div>
 
 sim-master 是一套面向 Debian 蜂窝 CPE、随身 WiFi、软路由和实验设备的 Web 管理系统。它通过 ModemManager、NetworkManager、QMI 和 AT 指令管理 modem，并提供多模块、SIM/eSIM、蜂窝网络、短信、通知、自动化、出口代理和 IMS/VoWiFi 诊断能力。
@@ -22,8 +15,6 @@ sim-master 是一套面向 Debian 蜂窝 CPE、随身 WiFi、软路由和实验�
 - modem 请求头：`X-SimAdmin-Modem-Id`
 
 > 配置开关不等于实际能力。IMS、VoWiFi、语音和短信是否可用，最终取决于 modem 固件、SIM、运营商策略、网络出口和实际协议交互。
-
-![Dashboard](./static/Dashboard.png)
 
 ## 主要功能
 
