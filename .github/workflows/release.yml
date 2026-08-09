@@ -158,5 +158,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=sim-master-image
+          cache-from: |
+            type=gha,scope=sim-master-image
+            type=gha,scope=sim-master-x86_64
+            type=gha,scope=sim-master-arm64
           cache-to: type=gha,mode=max,scope=sim-master-image
