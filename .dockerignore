@@ -1,0 +1,11 @@
+.git
+.github
+backend/target
+frontend/node_modules
+frontend/dist
+vowifi-helper/simadmin-vowifi-helper*
+vowifi-helper/*.test
+release
+*.tar.gz
+data.db
+proxy.json

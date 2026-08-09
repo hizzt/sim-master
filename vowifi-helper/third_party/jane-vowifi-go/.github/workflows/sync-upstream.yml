@@ -1,0 +1,134 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: 'Upstream ref to import from boa-z/vowifi-go'
+        required: false
+        default: 'main'
+      dispatch_vohive:
+        description: 'Dispatch Jane-Rui/vohive dependency update when sync commits'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Import upstream snapshot
+        id: sync
+        env:
+          UPSTREAM_REPO: https://github.com/boa-z/vowifi-go.git
+          UPSTREAM_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.upstream_ref || 'main' }}
+          SOURCE_MODULE: github.com/boa-z/vowifi-go
+          TARGET_MODULE: github.com/jane-rui/vowifi-go
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          upstream_ref="${UPSTREAM_REF:-main}"
+          git remote remove upstream 2>/dev/null || true
+          git remote add upstream "${UPSTREAM_REPO}"
+          git fetch --no-tags upstream "${upstream_ref}:refs/remotes/upstream/${upstream_ref}"
+          upstream_sha="$(git rev-parse "refs/remotes/upstream/${upstream_ref}")"
+          short_sha="${upstream_sha:0:12}"
+
+          echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
+
+          # Keep an auditable raw mirror of the upstream branch. If upstream is
+          # deleted later, this branch still preserves the last imported tree.
+          git push origin "refs/remotes/upstream/${upstream_ref}:refs/heads/upstream-main" --force
+
+          tmpdir="$(mktemp -d)"
+          cp .github/workflows/sync-upstream.yml "${tmpdir}/sync-upstream.yml"
+
+          # Replace the fork worktree with the upstream snapshot, then re-apply
+          # the local sync workflow and deterministic module-path rewrite.
+          git rm -r --ignore-unmatch . >/dev/null
+          git checkout "refs/remotes/upstream/${upstream_ref}" -- .
+          mkdir -p .github/workflows
+          cp "${tmpdir}/sync-upstream.yml" .github/workflows/sync-upstream.yml
+
+          files="$(git grep -l "${SOURCE_MODULE}" -- ':!vendor/**' || true)"
+          if [[ -n "${files}" ]]; then
+            printf '%s\n' "${files}" | xargs sed -i "s#${SOURCE_MODULE}#${TARGET_MODULE}#g"
+          fi
+
+          go mod tidy
+
+          module_path="$(go list -m)"
+          if [[ "${module_path}" != "${TARGET_MODULE}" ]]; then
+            echo "::error::unexpected module path ${module_path}; want ${TARGET_MODULE}"
+            exit 1
+          fi
+
+          if git grep -n "${SOURCE_MODULE}" -- ':!vendor/**'; then
+            echo "::error::source module path remains after rewrite"
+            exit 1
+          fi
+
+          go test ./...
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "synced=false" >> "${GITHUB_OUTPUT}"
+            echo "No upstream changes to import."
+            exit 0
+          fi
+
+          git commit -m "sync: import boa-z/vowifi-go ${short_sha}"
+          git push origin HEAD:main
+
+          echo "synced=true" >> "${GITHUB_OUTPUT}"
+          echo "fork_sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch VoHive dependency update
+        if: steps.sync.outputs.synced == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.VOHIVE_DISPATCH_TOKEN }}
+          DISPATCH_VOHIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.dispatch_vohive || 'true' }}
+          VOHIVE_REPO: Jane-Rui/vohive
+          FORK_SHA: ${{ steps.sync.outputs.fork_sha }}
+          UPSTREAM_SHA: ${{ steps.sync.outputs.upstream_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${DISPATCH_VOHIVE}" != "true" ]]; then
+            echo "VoHive dispatch disabled for this run."
+            exit 0
+          fi
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "::notice::VOHIVE_DISPATCH_TOKEN is not configured; skipping ${VOHIVE_REPO} repository_dispatch."
+            exit 0
+          fi
+
+          gh api "repos/${VOHIVE_REPO}/dispatches" \
+            -f event_type="vowifi-go-synced" \
+            -f client_payload[fork_sha]="${FORK_SHA}" \
+            -f client_payload[upstream_sha]="${UPSTREAM_SHA}"

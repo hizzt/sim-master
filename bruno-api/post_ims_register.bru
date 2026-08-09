@@ -1,0 +1,21 @@
+meta {
+  name: Start IMS Registration
+  type: http
+  seq: 204
+}
+
+post {
+  url: http://192.168.68.1:3000/api/ims/register
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+  timeout: 90000
+}
+
+docs {
+  启用基带并发起 IMS / VoWiFi 驻网，不会发起语音呼叫。
+  返回发起后的 IMS 驻网状态；运营商注册可能需要继续等待。
+}

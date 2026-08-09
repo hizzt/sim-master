@@ -1,0 +1,30 @@
+meta {
+  name: Create Proxy Instance
+  type: http
+  seq: 207
+}
+
+post {
+  url: http://192.168.68.1:3000/api/proxies
+  body: json
+  auth: inherit
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "name": "modem-0-socks",
+    "protocol": "socks5",
+    "listen_host": "127.0.0.1",
+    "listen_port": 1080,
+    "modem_id": "replace-with-api-modem-id",
+    "enabled": false
+  }
+}
+
+settings {
+  encodeUrl: true
+}

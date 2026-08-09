@@ -1,0 +1,21 @@
+meta {
+  name: Verify VoWiFi SMS Path
+  type: http
+  seq: 209
+}
+
+post {
+  url: http://192.168.68.1:3000/api/vowifi/sms/verify
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "direction": "send"
+  }
+}
+
+docs {
+  direction 可取 send 或 receive。只有 SWu 内真实 3GPP SMS SIP MESSAGE 证据才会通过。
+}

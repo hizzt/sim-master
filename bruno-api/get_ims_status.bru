@@ -1,0 +1,20 @@
+meta {
+  name: Get IMS Status
+  type: http
+  seq: 203
+}
+
+get {
+  url: http://192.168.68.1:3000/api/ims/status
+  body: none
+  auth: inherit
+}
+
+settings {
+  encodeUrl: true
+}
+
+docs {
+  返回 IMS / VoWiFi 驻网功能、注册状态与承载信息。
+  该接口仅探测状态，不会修改基带配置；固件不提供的字段返回 null 或 unknown。
+}

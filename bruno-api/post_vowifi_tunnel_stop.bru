@@ -1,0 +1,19 @@
+meta {
+  name: Stop VoWiFi SWu Tunnel
+  type: http
+  seq: 207
+}
+
+post {
+  url: http://192.168.68.1:3000/api/vowifi/tunnel/stop
+  body: none
+  auth: inherit
+}
+
+settings {
+  timeout: 20000
+}
+
+docs {
+  发送 SIGTERM 并等待 SWu helper 清理 IKE/Child SA。
+}

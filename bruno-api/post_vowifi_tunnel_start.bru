@@ -1,0 +1,29 @@
+meta {
+  name: Start VoWiFi SWu Tunnel
+  type: http
+  seq: 206
+}
+
+post {
+  url: http://192.168.68.1:3000/api/vowifi/tunnel/start
+  body: json
+  auth: inherit
+}
+
+body:json {
+  {
+    "proxy": {
+      "enabled": false,
+      "address": "",
+      "username": ""
+    }
+  }
+}
+
+settings {
+  timeout: 15000
+}
+
+docs {
+  为 X-SimAdmin-Modem-Id 所选模块启动真实 IKEv2/EAP-AKA SWu 会话。proxy.enabled=true 时 address 必须是支持 UDP ASSOCIATE 的 SOCKS5 host:port。
+}

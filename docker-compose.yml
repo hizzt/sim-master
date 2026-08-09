@@ -1,0 +1,30 @@
+services:
+  sim-master:
+    build:
+      context: .
+      target: runtime
+    image: ghcr.io/techblack/sim-master:latest
+    container_name: sim-master
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      HOST: 0.0.0.0
+      PORT: "3000"
+      RUST_LOG: info
+      DBUS_SYSTEM_BUS_ADDRESS: unix:path=/var/run/dbus/system_bus_socket
+    volumes:
+      - sim-master-state:/opt/simadmin
+      - /run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
+      - /run/udev:/run/udev:ro
+      - /dev:/dev
+      - /sys:/sys:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  sim-master-state:

@@ -1,0 +1,15 @@
+meta {
+  name: Get VoWiFi Verification Status
+  type: http
+  seq: 208
+}
+
+get {
+  url: http://192.168.68.1:3000/api/vowifi/verification/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  严格区分 SWu、P-CSCF SIP、已鉴权 IMS 注册和 VoWiFi 短信收发证据。
+}

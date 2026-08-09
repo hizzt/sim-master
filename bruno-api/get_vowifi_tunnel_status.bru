@@ -1,0 +1,15 @@
+meta {
+  name: Get VoWiFi SWu Tunnel Status
+  type: http
+  seq: 205
+}
+
+get {
+  url: http://192.168.68.1:3000/api/vowifi/tunnel/status
+  body: none
+  auth: inherit
+}
+
+docs {
+  返回真实 ePDG SWu helper 的进程、IKEv2/Child SA 阶段、隧道地址与 P-CSCF。
+}
