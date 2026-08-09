@@ -518,6 +518,7 @@ export interface SmsStats {
   outgoing: number
   pushed?: number
   push_attempted?: number
+  unread_count?: number
 }
 
 export interface CallInfo {
@@ -602,6 +603,7 @@ export interface CallRecord {
   start_time: string
   end_time?: string
   answered: boolean
+  transport?: string
 }
 
 export interface CallStats {

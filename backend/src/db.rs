@@ -33,6 +33,12 @@ pub struct CallRecord {
     pub start_time: String,       // 开始时间 ISO 8601
     pub end_time: Option<String>, // 结束时间 ISO 8601
     pub answered: bool,           // 是否接通
+    #[serde(default = "default_call_transport")]
+    pub transport: String,
+}
+
+fn default_call_transport() -> String {
+    "cellular".to_string()
 }
 
 /// 短信统计
@@ -45,6 +51,8 @@ pub struct SmsStats {
     pub pushed: i64,
     #[serde(default)]
     pub push_attempted: i64,
+    #[serde(default)]
+    pub unread_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -513,10 +521,17 @@ impl Database {
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 answered INTEGER DEFAULT 0,
+                transport TEXT NOT NULL DEFAULT 'cellular',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )",
             [],
         )?;
+        if !table_has_column(&conn, "call_history", "transport")? {
+            conn.execute(
+                "ALTER TABLE call_history ADD COLUMN transport TEXT NOT NULL DEFAULT 'cellular'",
+                [],
+            )?;
+        }
 
         // 创建通话记录索引
         conn.execute(
@@ -907,7 +922,10 @@ impl Database {
                  phone_number = excluded.phone_number,
                  content = excluded.content,
                  timestamp = excluded.timestamp,
-                 status = excluded.status
+                 status = CASE
+                     WHEN sms_messages.status = 'read' AND excluded.status = 'received' THEN 'read'
+                     ELSE excluded.status
+                 END
              WHERE sms_messages.direction IS NOT excluded.direction
                 OR sms_messages.phone_number IS NOT excluded.phone_number
                 OR sms_messages.content IS NOT excluded.content
@@ -1531,7 +1549,6 @@ impl Database {
         let incoming: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sms_messages
              WHERE direction = 'incoming'
-               AND status = 'received'
                AND (?1 = '' OR timestamp >= ?1)",
             params![since],
             |row| row.get(0),
@@ -1552,7 +1569,7 @@ impl Database {
 
         let incoming: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sms_messages
-             WHERE direction = 'incoming' AND status = 'received'",
+             WHERE direction = 'incoming'",
             [],
             |row| row.get(0),
         )?;
@@ -1566,7 +1583,6 @@ impl Database {
         let pushed: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sms_messages
              WHERE direction = 'incoming'
-               AND status = 'received'
                AND notification_status = 'success'",
             [],
             |row| row.get(0),
@@ -1575,8 +1591,14 @@ impl Database {
         let push_attempted: i64 = conn.query_row(
             "SELECT COUNT(*) FROM sms_messages
              WHERE direction = 'incoming'
-               AND status = 'received'
                AND notification_status IN ('success', 'failed')",
+            [],
+            |row| row.get(0),
+        )?;
+
+        let unread_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM sms_messages
+             WHERE direction = 'incoming' AND status = 'received'",
             [],
             |row| row.get(0),
         )?;
@@ -1587,7 +1609,26 @@ impl Database {
             outgoing,
             pushed,
             push_attempted,
+            unread_count,
         })
+    }
+
+    pub fn mark_sms_read(&self, ids: &[i64], phone_numbers: &[String]) -> Result<usize> {
+        let conn = self.conn.lock().unwrap();
+        let mut changed = 0usize;
+        for id in ids {
+            changed += conn.execute(
+                "UPDATE sms_messages SET status = 'read' WHERE id = ?1 AND direction = 'incoming' AND status = 'received'",
+                params![id],
+            )?;
+        }
+        for phone in phone_numbers {
+            changed += conn.execute(
+                "UPDATE sms_messages SET status = 'read' WHERE phone_number = ?1 AND direction = 'incoming' AND status = 'received'",
+                params![phone],
+            )?;
+        }
+        Ok(changed)
     }
 
     /// 删除所有短信
@@ -2067,13 +2108,23 @@ impl Database {
 
     /// 插入新通话记录
     pub fn insert_call(&self, direction: &str, phone_number: &str, answered: bool) -> Result<i64> {
+        self.insert_call_with_transport(direction, phone_number, answered, "cellular")
+    }
+
+    pub fn insert_call_with_transport(
+        &self,
+        direction: &str,
+        phone_number: &str,
+        answered: bool,
+        transport: &str,
+    ) -> Result<i64> {
         let conn = self.conn.lock().unwrap();
         let start_time = Utc::now().to_rfc3339();
 
         conn.execute(
-            "INSERT INTO call_history (direction, phone_number, duration, start_time, answered)
-             VALUES (?1, ?2, 0, ?3, ?4)",
-            params![direction, phone_number, start_time, answered as i32],
+            "INSERT INTO call_history (direction, phone_number, duration, start_time, answered, transport)
+             VALUES (?1, ?2, 0, ?3, ?4, ?5)",
+            params![direction, phone_number, start_time, answered as i32, transport],
         )?;
 
         Ok(conn.last_insert_rowid())
@@ -2107,7 +2158,7 @@ impl Database {
     pub fn get_call_history(&self, limit: i64, offset: i64) -> Result<Vec<CallRecord>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT id, direction, phone_number, duration, start_time, end_time, answered
+            "SELECT id, direction, phone_number, duration, start_time, end_time, answered, transport
              FROM call_history
              ORDER BY start_time DESC
              LIMIT ?1 OFFSET ?2",
@@ -2122,6 +2173,7 @@ impl Database {
                 start_time: row.get(4)?,
                 end_time: row.get(5)?,
                 answered: row.get::<_, i32>(6)? != 0,
+                transport: row.get(7)?,
             })
         })?;
 
@@ -2440,6 +2492,19 @@ mod tests {
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].status, "received");
         assert_eq!(messages[0].pdu.as_deref(), Some(marker));
+
+        db.mark_sms_read(&[messages[0].id], &[]).unwrap();
+        db.upsert_sms_by_pdu(
+            "incoming",
+            "+8615556250521",
+            "hello",
+            "2026-08-08T10:00:02Z",
+            "received",
+            marker,
+        )
+        .unwrap();
+        let replayed = db.get_sms_messages(10, 0, Some("incoming")).unwrap();
+        assert_eq!(replayed[0].status, "read");
     }
 
     #[test]

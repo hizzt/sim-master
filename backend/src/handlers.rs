@@ -2917,14 +2917,58 @@ fn schedule_sms_db_maintenance(app: &AppState, deleted: usize) {
 
 /// POST /api/sms/send
 pub async fn send_sms_handler(
-    State(conn): State<Arc<Connection>>,
-    State(db): State<Arc<Database>>,
+    State(app): State<AppState>,
     Json(payload): Json<SendSmsRequest>,
 ) -> impl IntoResponse {
+    let vowifi = app.vowifi_tunnel_manager.status().await;
+    if vowifi.running && vowifi.sms_over_ims_ready {
+        let request = SmsPathVerificationRequest {
+            direction: "send".to_string(),
+            phone_number: payload.phone_number.clone(),
+            content: payload.content.clone(),
+            encoding: "auto".to_string(),
+            timeout_seconds: 30,
+            after_id: String::new(),
+        };
+        return match app.vowifi_tunnel_manager.verify_sms_path(&request).await {
+            Ok(result) if result.verified => {
+                let marker = (!result.message_id.trim().is_empty())
+                    .then(|| format!("vowifi:tx:{}", result.message_id.trim()));
+                let _ = app.database.insert_sms(
+                    "outgoing",
+                    &payload.phone_number,
+                    &payload.content,
+                    "sent",
+                    marker.as_deref(),
+                );
+                (
+                    StatusCode::OK,
+                    Json(ApiResponse::success_with_message(
+                        "SMS sent via VoWiFi",
+                        json!({ "path": "vowifi", "transport": "ims" }),
+                    )),
+                )
+            }
+            Ok(result) => (
+                StatusCode::OK,
+                Json(ApiResponse::<serde_json::Value>::error(format!(
+                    "VoWiFi SMS failed: {}",
+                    result.evidence
+                ))),
+            ),
+            Err(error) => (
+                StatusCode::OK,
+                Json(ApiResponse::<serde_json::Value>::error(format!(
+                    "VoWiFi SMS failed: {error}"
+                ))),
+            ),
+        };
+    }
+    let conn = app.dbus_conn.clone();
     match send_sms(&conn, &payload.phone_number, &payload.content).await {
         Ok(path) => {
             // 存入数据库
-            let _ = db.insert_sms(
+            let _ = app.database.insert_sms(
                 "outgoing",
                 &payload.phone_number,
                 &payload.content,
@@ -3018,6 +3062,26 @@ pub async fn get_sms_stats_handler(
                 "Failed: {}",
                 e
             ))),
+        ),
+    }
+}
+
+/// POST /api/sms/read
+pub async fn mark_sms_read_handler(
+    State(db): State<Arc<Database>>,
+    Json(payload): Json<SmsMarkReadRequest>,
+) -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
+    match db.mark_sms_read(&payload.ids, &payload.phone_numbers) {
+        Ok(updated) => (
+            StatusCode::OK,
+            Json(ApiResponse::success_with_message(
+                "SMS marked read",
+                json!({ "updated": updated }),
+            )),
+        ),
+        Err(e) => (
+            StatusCode::OK,
+            Json(ApiResponse::error(format!("Failed: {}", e))),
         ),
     }
 }
@@ -3135,7 +3199,21 @@ async fn track_call_start(
     phone_number: &str,
     answered: bool,
 ) {
-    if let Ok(id) = app.database.insert_call(direction, phone_number, answered) {
+    track_call_start_with_transport(app, path, direction, phone_number, answered, "cellular").await;
+}
+
+async fn track_call_start_with_transport(
+    app: &AppState,
+    path: &str,
+    direction: &str,
+    phone_number: &str,
+    answered: bool,
+    transport: &str,
+) {
+    if let Ok(id) =
+        app.database
+            .insert_call_with_transport(direction, phone_number, answered, transport)
+    {
         let mut active = app.active_calls.lock().await;
         active.insert(
             path.to_string(),
@@ -3637,13 +3715,24 @@ pub async fn dial_vowifi_call_handler(
     Json(payload): Json<VowifiDialCallRequest>,
 ) -> (StatusCode, Json<ApiResponse<VowifiCallStatus>>) {
     match app.vowifi_tunnel_manager.dial_call(&payload).await {
-        Ok(call) => (
-            StatusCode::ACCEPTED,
-            Json(ApiResponse::success_with_message(
-                "VoWiFi IMS INVITE started; waiting for RTP transport",
-                call,
-            )),
-        ),
+        Ok(call) => {
+            track_call_start_with_transport(
+                &app,
+                &format!("vowifi:{}", call.call_id),
+                "outgoing",
+                &call.phone_number,
+                false,
+                "vowifi",
+            )
+            .await;
+            (
+                StatusCode::ACCEPTED,
+                Json(ApiResponse::success_with_message(
+                    "VoWiFi IMS INVITE started; waiting for RTP transport",
+                    call,
+                )),
+            )
+        }
         Err(error) => (
             StatusCode::CONFLICT,
             Json(ApiResponse::<VowifiCallStatus>::error(error)),
@@ -3657,13 +3746,16 @@ pub async fn hangup_vowifi_call_handler(
     Json(payload): Json<VowifiHangupCallRequest>,
 ) -> (StatusCode, Json<ApiResponse<VowifiCallStatus>>) {
     match app.vowifi_tunnel_manager.hangup_call(&payload).await {
-        Ok(call) => (
-            StatusCode::OK,
-            Json(ApiResponse::success_with_message(
-                "VoWiFi IMS call termination requested",
-                call,
-            )),
-        ),
+        Ok(call) => {
+            finish_tracked_call(&app, &format!("vowifi:{}", call.call_id), call.media_ready).await;
+            (
+                StatusCode::OK,
+                Json(ApiResponse::success_with_message(
+                    "VoWiFi IMS call termination requested",
+                    call,
+                )),
+            )
+        }
         Err(error) => (
             StatusCode::BAD_REQUEST,
             Json(ApiResponse::<VowifiCallStatus>::error(error)),

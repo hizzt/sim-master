@@ -1,4 +1,4 @@
-import type { ElementType } from 'react'
+import { useEffect, useState, type ElementType } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Box,
@@ -11,7 +11,9 @@ import {
   ListItemText,
   Tooltip,
   Typography,
+  Badge,
 } from '@mui/material'
+import { api } from '../../api/current'
 import {
   AutoMode as AutomationIcon,
   Dashboard as DashboardIcon,
@@ -98,6 +100,14 @@ export default function Sidebar({
   onClose,
   isMobile,
 }: SidebarProps) {
+  const [unreadSms, setUnreadSms] = useState(0)
+  useEffect(() => {
+    let active = true
+    const load = () => { void api.getSmsStats().then((response) => { if (active) setUnreadSms(response.data?.unread_count ?? 0) }).catch(() => undefined) }
+    load()
+    const timer = window.setInterval(load, 10000)
+    return () => { active = false; window.clearInterval(timer) }
+  }, [])
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -168,7 +178,7 @@ export default function Sidebar({
                         justifyContent: 'center',
                       }}
                     >
-                      <Icon sx={{ fontSize: 18 }} />
+                      {item.path === '/sms' && unreadSms > 0 ? <Badge badgeContent={unreadSms} color="error" max={99}><Icon sx={{ fontSize: 18 }} /></Badge> : <Icon sx={{ fontSize: 18 }} />}
                     </ListItemIcon>
                     {!compact && (
                       <ListItemText

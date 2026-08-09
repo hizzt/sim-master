@@ -980,6 +980,14 @@ pub struct SmsBatchDeleteRequest {
     pub phone_numbers: Vec<String>,
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct SmsMarkReadRequest {
+    #[serde(default)]
+    pub ids: Vec<i64>,
+    #[serde(default)]
+    pub phone_numbers: Vec<String>,
+}
+
 fn default_page_size() -> i64 {
     50
 }

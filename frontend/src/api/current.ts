@@ -828,6 +828,13 @@ class SimAdminCurrentAPI {
     return request<ApiResponse<SmsStats>>('/sms/stats')
   }
 
+  async markSmsRead(payload: { ids?: number[]; phone_numbers?: string[] }) {
+    return request<ApiResponse<{ updated: number }>>('/sms/read', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    })
+  }
+
   async clearAllSms() {
     return request<ApiResponse<Record<string, never>>>('/sms/clear', {
       method: 'POST',

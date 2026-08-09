@@ -526,6 +526,7 @@ async fn main() -> Result<()> {
         Arc::clone(&dbus_conn),
         Arc::clone(&app_db),
     ));
+    vowifi_tunnel_manager.set_notification_sender(Arc::clone(&notification_sender));
     let system_event_emitter = Arc::new(SystemEventEmitter::new(Arc::clone(&notification_sender)));
     let (sms_resync, sms_resync_rx) = sms_listener::sms_resync_channel();
     let ddns_manager = Arc::new(DdnsManager::new());
@@ -1070,6 +1071,10 @@ async fn main() -> Result<()> {
         .route(
             "/api/sms/stats",
             get(get_sms_stats_handler).options(options_handler),
+        )
+        .route(
+            "/api/sms/read",
+            post(mark_sms_read_handler).options(options_handler),
         )
         .route(
             "/api/sms/batch-delete",

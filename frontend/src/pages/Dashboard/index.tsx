@@ -1,4 +1,4 @@
-import { Box, Chip, CircularProgress, Stack, Typography } from '@mui/material'
+import { Box, Card, CardContent, Chip, CircularProgress, Stack, Typography } from '@mui/material'
 import Grid from '@mui/material/Grid'
 import {
   CheckCircle,
@@ -18,6 +18,7 @@ import {
   DeviceInfoCard,
 } from './components'
 import { useDashboardData, type DashboardData } from './hooks/useDashboardData'
+import { useModems } from '@/contexts/ModemContext'
 
 function getNetworkTech(data: DashboardData) {
   if (data.cellsInfo?.serving_cell?.tech) return data.cellsInfo.serving_cell.tech.toUpperCase()
@@ -67,9 +68,9 @@ function StatusBar({ data }: { data: DashboardData }) {
     >
       <Stack direction="row" spacing={{ xs: 1, md: 2 }} alignItems="center" flexWrap="wrap" useFlexGap>
         <Box display="flex" alignItems="center" gap={1}>
-          <StatusDot active={Boolean(data.deviceInfo?.online)} />
+          <StatusDot active={Boolean(data.deviceInfo?.online || data.vowifiStatus?.running)} />
           <Typography variant="subtitle2" fontWeight={600}>
-            {data.deviceInfo?.online ? '系统在线' : '系统离线'}
+            {data.deviceInfo?.online ? '系统在线' : data.vowifiStatus?.running ? 'VoWiFi 在线（蜂窝离线）' : '系统离线'}
           </Typography>
         </Box>
 
@@ -100,6 +101,12 @@ function StatusBar({ data }: { data: DashboardData }) {
           </>
         )}
         {isAirplaneMode && <Chip icon={<FlightTakeoff />} label="飞行模式" color="warning" size="small" />}
+        <Chip
+          icon={<WifiTethering />}
+          label={data.vowifiStatus?.ims_registered ? 'VoWiFi 已驻网' : data.vowifiStatus?.running ? 'VoWiFi 连接中' : 'VoWiFi 未启用'}
+          color={data.vowifiStatus?.ims_registered ? 'success' : 'default'}
+          size="small"
+        />
         <Typography variant="caption" color="text.secondary">
           运行 {data.systemStats?.uptime?.uptime_formatted || '-'}
         </Typography>
@@ -138,6 +145,7 @@ function StatusBar({ data }: { data: DashboardData }) {
 export default function DashboardPage() {
   const { refreshInterval, refreshKey } = useRefreshInterval()
   const { initialLoading, error, setError, data, actions } = useDashboardData(refreshInterval, refreshKey)
+  const { modems, selectedModemId } = useModems()
 
   if (initialLoading) {
     return (
@@ -156,37 +164,50 @@ export default function DashboardPage() {
       <Stack spacing={{ xs: 3, sm: 4 }}>
         <StatusBar data={data} />
 
+        <Stack spacing={2}>
+          {(modems.length > 0 ? modems : [{ id: selectedModemId || 'device-a', path_id: 'A', manufacturer: data.deviceInfo?.manufacturer || '', model: data.deviceInfo?.model || '', primary_port: '', state: data.deviceInfo?.online ? '在线' : '离线' }]).map((modem, index) => {
+            const selected = modems.length === 0 || modem.id === selectedModemId
+            return (
+              <Box key={modem.id}>
+                <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>设备{String.fromCharCode(65 + index)}</Typography>
+                <Grid container spacing={2}>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <PageSection>
+                      {selected ? (
+                        <DeviceInfoCard deviceInfo={data.deviceInfo} systemStats={data.systemStats} />
+                      ) : (
+                        <Card sx={{ height: '100%' }}><CardContent><Typography variant="subtitle2" fontWeight={700}>设备信息</Typography><Typography variant="body2" mt={1}>{modem.manufacturer} {modem.model}</Typography><Typography variant="caption" color="text.secondary">{modem.primary_port || modem.path_id} · {modem.state}</Typography></CardContent></Card>
+                      )}
+                    </PageSection>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <PageSection>
+                      <QuickControls
+                        dataStatus={selected ? data.dataStatus : false}
+                        airplaneMode={selected ? data.airplaneMode : null}
+                        roaming={selected ? data.roaming : null}
+                        vowifiStatus={selected ? data.vowifiStatus : null}
+                        onToggleData={() => void actions.toggleData()}
+                        onToggleAirplaneMode={() => void actions.toggleAirplaneMode()}
+                        onToggleRoaming={() => void actions.toggleRoaming()}
+                        onToggleVowifi={() => void actions.toggleVowifi()}
+                        disabled={!selected}
+                      />
+                    </PageSection>
+                  </Grid>
+                  <Grid size={{ xs: 12, md: 4 }}>
+                    <PageSection>
+                      {selected ? <SimCardInfo simInfo={data.simInfo} onRefresh={() => void actions.loadData()} /> : <Card sx={{ height: '100%' }}><CardContent><Typography variant="subtitle2" fontWeight={700}>SIM 卡信息</Typography><Typography variant="body2" mt={1}>请在顶部选择此模块后查看完整 SIM 信息</Typography></CardContent></Card>}
+                    </PageSection>
+                  </Grid>
+                </Grid>
+              </Box>
+            )
+          })}
+        </Stack>
+
         <Grid container spacing={2}>
-          <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-            <PageSection>
-              <QuickControls
-                dataStatus={data.dataStatus}
-                airplaneMode={data.airplaneMode}
-                roaming={data.roaming}
-                onToggleData={() => void actions.toggleData()}
-                onToggleAirplaneMode={() => void actions.toggleAirplaneMode()}
-                onToggleRoaming={() => void actions.toggleRoaming()}
-              />
-            </PageSection>
-          </Grid>
-
-          <Grid size={{ xs: 12, md: 6, lg: 3 }}>
-            <PageSection>
-              <SimCardInfo simInfo={data.simInfo} onRefresh={() => void actions.loadData()} />
-            </PageSection>
-          </Grid>
-
-          <Grid size={{ xs: 12, lg: 6 }}>
-            <PageSection>
-              <SystemResources systemStats={data.systemStats} />
-            </PageSection>
-          </Grid>
-
-          <Grid size={12}>
-            <PageSection>
-              <DeviceInfoCard deviceInfo={data.deviceInfo} systemStats={data.systemStats} />
-            </PageSection>
-          </Grid>
+          <Grid size={12}><PageSection><SystemResources systemStats={data.systemStats} /></PageSection></Grid>
         </Grid>
       </Stack>
     </Box>

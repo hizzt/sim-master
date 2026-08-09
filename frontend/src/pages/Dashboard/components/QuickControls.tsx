@@ -1,14 +1,17 @@
 import { Box, Card, CardContent, Typography, Stack, Switch, Chip } from '@mui/material'
-import { NetworkCheck, FlightTakeoff, TravelExplore, Tune } from '@mui/icons-material'
-import type { AirplaneModeResponse, RoamingResponse } from '@/api/types'
+import { NetworkCheck, FlightTakeoff, TravelExplore, Tune, WifiCalling3 } from '@mui/icons-material'
+import type { AirplaneModeResponse, RoamingResponse, VowifiTunnelStatus } from '@/api/types'
 
 interface QuickControlsProps {
   dataStatus: boolean
   airplaneMode: AirplaneModeResponse | null
   roaming: RoamingResponse | null
+  vowifiStatus: VowifiTunnelStatus | null
   onToggleData: () => void
   onToggleAirplaneMode: () => void
   onToggleRoaming: () => void
+  onToggleVowifi: () => void
+  disabled?: boolean
 }
 
 export function QuickControls({
@@ -18,6 +21,9 @@ export function QuickControls({
   onToggleData,
   onToggleAirplaneMode,
   onToggleRoaming,
+  vowifiStatus,
+  onToggleVowifi,
+  disabled = false,
 }: QuickControlsProps) {
   return (
     <Card sx={{ height: '100%' }}>
@@ -30,6 +36,14 @@ export function QuickControls({
         <Stack spacing={2}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <Box display="flex" alignItems="center" gap={1}>
+              <WifiCalling3 color={vowifiStatus?.running ? 'success' : 'disabled'} />
+              <Typography variant="body2">VoWiFi</Typography>
+              <Chip label={vowifiStatus?.ims_registered ? '已驻网' : vowifiStatus?.running ? '连接中' : '未启用'} size="small" color={vowifiStatus?.ims_registered ? 'success' : 'default'} sx={{ height: 18, fontSize: '0.65rem' }} />
+            </Box>
+            <Switch checked={Boolean(vowifiStatus?.running)} onChange={() => void onToggleVowifi()} color="success" size="small" disabled={disabled} />
+          </Box>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <Box display="flex" alignItems="center" gap={1}>
               <NetworkCheck color={dataStatus ? 'success' : 'disabled'} />
               <Typography variant="body2">数据连接</Typography>
             </Box>
@@ -40,6 +54,7 @@ export function QuickControls({
               }}
               color="success"
               size="small"
+              disabled={disabled}
             />
           </Box>
 
@@ -58,6 +73,7 @@ export function QuickControls({
               }}
               color="info"
               size="small"
+              disabled={disabled}
             />
           </Box>
 
@@ -73,6 +89,7 @@ export function QuickControls({
               }}
               color="warning"
               size="small"
+              disabled={disabled}
             />
           </Box>
         </Stack>

@@ -4,7 +4,7 @@ use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
@@ -13,8 +13,9 @@ use tokio::sync::Mutex;
 use tracing::{info, warn};
 use zbus::Connection;
 
-use crate::db::Database;
+use crate::db::{Database, SmsMessage};
 use crate::modem_manager::{get_airplane_mode, set_airplane_mode};
+use crate::notification::NotificationSender;
 
 const HELPER_FILENAME: &str = "simadmin-vowifi-helper";
 const STATUS_FILENAME: &str = "vowifi-tunnel.json";
@@ -731,6 +732,7 @@ pub struct VowifiTunnelManager {
     airplane_mode_requested: Option<Arc<std::sync::atomic::AtomicBool>>,
     runtime: Arc<Mutex<RuntimeState>>,
     lifecycle: Arc<Mutex<()>>,
+    notification_sender: Arc<StdMutex<Option<Arc<NotificationSender>>>>,
 }
 
 impl VowifiTunnelManager {
@@ -771,7 +773,12 @@ impl VowifiTunnelManager {
             airplane_mode_requested,
             runtime: Arc::new(Mutex::new(RuntimeState::default())),
             lifecycle: Arc::new(Mutex::new(())),
+            notification_sender: Arc::new(StdMutex::new(None)),
         }
+    }
+
+    pub fn set_notification_sender(&self, sender: Arc<NotificationSender>) {
+        *self.notification_sender.lock().unwrap() = Some(sender);
     }
 
     pub fn helper_available(&self) -> bool {
@@ -833,7 +840,7 @@ impl VowifiTunnelManager {
             }
         }
         if let Some(database) = &self.database {
-            sync_sms_to_database(database, &status);
+            sync_sms_to_database(database, &status, self.notification_sender.clone());
         }
         status
     }
@@ -934,7 +941,7 @@ impl VowifiTunnelManager {
         };
         let refreshed = self.status().await;
         if let Some(database) = &self.database {
-            sync_sms_to_database(database, &refreshed);
+            sync_sms_to_database(database, &refreshed, self.notification_sender.clone());
         }
         Ok(result)
     }
@@ -1339,11 +1346,12 @@ impl VowifiTunnelManager {
         if let Some(database) = self.database.clone() {
             let status_path = self.status_path.clone();
             let helper_path = self.helper_path.clone();
+            let notification_sender = self.notification_sender.clone();
             tokio::spawn(async move {
                 while pid_is_helper(pid, &helper_path) {
                     if let Ok(bytes) = tokio::fs::read(&status_path).await {
                         if let Ok(status) = serde_json::from_slice::<VowifiTunnelStatus>(&bytes) {
-                            sync_sms_to_database(&database, &status);
+                            sync_sms_to_database(&database, &status, notification_sender.clone());
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -1676,7 +1684,11 @@ fn carrier_overrides_path(helper_path: &Path) -> PathBuf {
         .join(CARRIER_OVERRIDES_FILENAME)
 }
 
-fn sync_sms_to_database(database: &Database, status: &VowifiTunnelStatus) {
+fn sync_sms_to_database(
+    database: &Database,
+    status: &VowifiTunnelStatus,
+    notification_sender: Arc<StdMutex<Option<Arc<NotificationSender>>>>,
+) {
     if !status.sms_last_tx_message_id.trim().is_empty()
         && !status.sms_last_tx_to.trim().is_empty()
         && !status.sms_last_tx_text.trim().is_empty()
@@ -1705,7 +1717,7 @@ fn sync_sms_to_database(database: &Database, status: &VowifiTunnelStatus) {
     }
 
     for message in &status.sms_received_messages {
-        persist_received_sms(database, message, &status.updated_at);
+        persist_received_sms(database, message, &status.updated_at, &notification_sender);
     }
 
     // Compatibility with helpers that predate sms_received_messages. State
@@ -1729,11 +1741,17 @@ fn sync_sms_to_database(database: &Database, status: &VowifiTunnelStatus) {
                 rp_ack_sip_code: status.sms_last_rx_rp_ack_sip_code,
             },
             &status.updated_at,
+            &notification_sender,
         );
     }
 }
 
-fn persist_received_sms(database: &Database, message: &VowifiReceivedSms, fallback_time: &str) {
+fn persist_received_sms(
+    database: &Database,
+    message: &VowifiReceivedSms,
+    fallback_time: &str,
+    notification_sender: &Arc<StdMutex<Option<Arc<NotificationSender>>>>,
+) {
     if message.id.trim().is_empty()
         || message.from.trim().is_empty()
         || !(200..300).contains(&message.rp_ack_sip_code)
@@ -1742,7 +1760,8 @@ fn persist_received_sms(database: &Database, message: &VowifiReceivedSms, fallba
     }
     let marker = format!("vowifi:rx:{}", message.id.trim());
     let timestamp = first_non_empty(&message.received_at, fallback_time);
-    if let Err(error) = database.upsert_sms_by_pdu(
+    let existed = database.sms_exists_by_pdu(&marker).unwrap_or(false);
+    match database.upsert_sms_by_pdu(
         "incoming",
         &message.from,
         &message.text,
@@ -1750,7 +1769,26 @@ fn persist_received_sms(database: &Database, message: &VowifiReceivedSms, fallba
         "received",
         &marker,
     ) {
-        warn!(error = %error, marker = %marker, "Failed to persist VoWiFi incoming SMS");
+        Ok(Some(id)) if !existed => {
+            let sms = SmsMessage {
+                id,
+                direction: "incoming".to_string(),
+                phone_number: message.from.clone(),
+                content: message.text.clone(),
+                timestamp: timestamp.to_string(),
+                status: "received".to_string(),
+                pdu: Some(marker),
+            };
+            if let Some(sender) = notification_sender.lock().unwrap().clone() {
+                tokio::spawn(async move {
+                    let _ = sender.forward_sms(&sms).await;
+                });
+            }
+        }
+        Ok(_) => {}
+        Err(error) => {
+            warn!(error = %error, marker = %marker, "Failed to persist VoWiFi incoming SMS")
+        }
     }
 }
 
@@ -2127,8 +2165,8 @@ mod tests {
             ..Default::default()
         };
 
-        sync_sms_to_database(&database, &status);
-        sync_sms_to_database(&database, &status);
+        sync_sms_to_database(&database, &status, Arc::new(StdMutex::new(None)));
+        sync_sms_to_database(&database, &status, Arc::new(StdMutex::new(None)));
 
         let messages = database.get_sms_messages(10, 0, Some("incoming")).unwrap();
         assert_eq!(messages.len(), 2);
@@ -2227,7 +2265,7 @@ mod tests {
             ..Default::default()
         };
 
-        sync_sms_to_database(&database, &status);
+        sync_sms_to_database(&database, &status, Arc::new(StdMutex::new(None)));
         assert!(database
             .get_sms_messages(10, 0, Some("incoming"))
             .unwrap()
@@ -2256,7 +2294,7 @@ mod tests {
             ..Default::default()
         };
 
-        sync_sms_to_database(&database, &status);
+        sync_sms_to_database(&database, &status, Arc::new(StdMutex::new(None)));
         assert!(database
             .get_sms_messages(10, 0, Some("incoming"))
             .unwrap()

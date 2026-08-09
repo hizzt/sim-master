@@ -370,6 +370,19 @@ export default function SMSPage() {
     setSelectedConversation(phone)
     setPhoneNumber(phone)
     void fetchConversation(phone, scrollTargetId)
+    void api.markSmsRead({ phone_numbers: [phone] }).then(() => {
+      setMessages((current) => current.map((message) => (
+        message.phone_number === phone && message.direction === 'incoming' && message.status === 'received'
+          ? { ...message, status: 'read' }
+          : message
+      )))
+      setConversations((current) => current.map((conversation) => (
+        conversation.phoneNumber === phone
+          ? { ...conversation, unreadCount: 0, messages: conversation.messages.map((message) => message.direction === 'incoming' && message.status === 'received' ? { ...message, status: 'read' } : message) }
+          : conversation
+      )))
+      void fetchStats()
+    }).catch((cause) => console.warn('标记短信已读失败:', cause))
   }
 
   const handleBackToList = () => {
@@ -875,12 +888,13 @@ export default function SMSPage() {
                         <Typography fontWeight={600}>
                           {renderHighlightedText(conv.phoneNumber, searchTerm)}
                         </Typography>
-                        <Badge badgeContent={conv.messages.length} color="primary" max={99} />
+                        {conv.unreadCount > 0 && <Badge badgeContent={conv.unreadCount} color="error" max={99} />}
                       </Box>
                     }
                     secondary={
                       <Typography variant="body2" color="text.secondary" noWrap sx={{ maxWidth: 180 }}>
                         {displayMessage.direction === 'outgoing' ? '你: ' : ''}
+                        {displayMessage.pdu?.startsWith('vowifi:') ? '📶 VoWiFi · ' : ''}
                         {renderHighlightedText(displayMessage.content, searchTerm)}
                       </Typography>
                     }
@@ -1023,6 +1037,7 @@ export default function SMSPage() {
                     >
                       {formatTime(msg.timestamp)}
                     </Typography>
+                    {msg.pdu?.startsWith('vowifi:') && <Chip label="VoWiFi" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: msg.direction === 'outgoing' ? 'rgba(255,255,255,0.2)' : 'action.hover' }} />}
                     {msg.direction === 'outgoing' && (
                       msg.status === 'sent' ? (
                         <Chip label="已发送" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: 'rgba(255,255,255,0.2)' }} />

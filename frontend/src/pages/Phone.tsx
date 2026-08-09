@@ -880,6 +880,7 @@ export default function PhonePage() {
                         <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                           <Typography variant="body1" fontWeight={600}>{record.phone_number || '未知号码'}</Typography>
                           <Chip label={directionLabel(record.direction)} size="small" variant="outlined" />
+                          {record.transport === 'vowifi' && <Chip label="VoWiFi" size="small" color="info" variant="outlined" />}
                           {record.duration > 0 && <Chip label={formatDuration(record.duration)} size="small" variant="outlined" />}
                         </Box>
                       }

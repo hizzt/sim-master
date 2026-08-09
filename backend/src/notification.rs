@@ -3909,6 +3909,7 @@ mod tests {
             start_time: "2026-05-14T16:30:45Z".to_string(),
             end_time: Some("2026-05-14T16:31:45Z".to_string()),
             answered: true,
+            transport: "cellular".to_string(),
         };
 
         assert_eq!(
