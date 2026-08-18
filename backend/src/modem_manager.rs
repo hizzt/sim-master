@@ -731,14 +731,24 @@ fn operator_code_from_imsi(imsi: &str) -> String {
         return String::new();
     }
 
-    // Mainland China MCC 460 uses two-digit MNCs. Using six IMSI digits would
-    // mislabel China Mobile 46002 as MNC 027/026/etc.
-    if digits.starts_with("460") {
-        return digits[..5].to_string();
-    }
+    let mcc = &digits[..3];
+    // Determine MNC length per MCC. Most countries use 2-digit MNCs;
+    // only known exceptions (mostly North America / Latin America) use 3 digits.
+    // This mirrors the approach in vohive's parseMCCMNCFromIMSI.
+    let mnc_len: usize = match mcc {
+        "302" | "308" | "310" | "311" | "312" | "313" | "314" | "315" | "316"
+        | "318" | "319" | "332" | "334" | "338" | "342" | "344" | "346" | "348"
+        | "350" | "354" | "356" | "358" | "360" | "362" | "364" | "365" | "366"
+        | "368" | "370" | "372" | "374" | "376" | "405" | "406" | "716" | "722"
+        | "730" | "732" | "736" | "740" | "744" | "746" | "748" | "750" => 3,
+        _ => 2, // UK 234, China 460, Germany 262, France 208, Japan 440, etc.
+    };
 
-    if digits.len() >= 6 {
-        digits[..6].to_string()
+    let total = 3 + mnc_len;
+    if digits.len() >= total {
+        digits[..total].to_string()
+    } else if digits.len() >= 5 {
+        digits[..5].to_string()
     } else {
         String::new()
     }
@@ -3667,11 +3677,32 @@ LTE Timing Advance: 'unavailable'"#;
     }
 
     #[test]
-    fn derives_non_china_operator_code_with_three_digit_mnc_fallback() {
-        assert_eq!(operator_code_from_imsi("001010"), "001010");
+    fn derives_operator_code_uk_2digit_mnc() {
+        // UK Vodafone (MCC 234, MNC 15) → 5 digits, split correctly
+        assert_eq!(operator_code_from_imsi("234159611381188"), "23415");
         assert_eq!(
-            split_operator_code(&operator_code_from_imsi("001010")),
-            ("001".into(), "010".into())
+            split_operator_code(&operator_code_from_imsi("234159611381188")),
+            ("234".into(), "15".into())
+        );
+    }
+
+    #[test]
+    fn derives_operator_code_us_3digit_mnc() {
+        // US T-Mobile (MCC 310, MNC 260) → 6 digits, 3-digit MNC
+        assert_eq!(operator_code_from_imsi("310260123456789"), "310260");
+        assert_eq!(
+            split_operator_code(&operator_code_from_imsi("310260123456789")),
+            ("310".into(), "260".into())
+        );
+    }
+
+    #[test]
+    fn derives_operator_code_china_2digit_mnc() {
+        // China Unicom (MCC 460, MNC 01) → 5 digits
+        assert_eq!(operator_code_from_imsi("460010856519760"), "46001");
+        assert_eq!(
+            split_operator_code(&operator_code_from_imsi("460010856519760")),
+            ("460".into(), "01".into())
         );
     }
 
