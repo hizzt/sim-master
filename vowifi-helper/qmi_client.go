@@ -38,7 +38,7 @@ func newQMIWithProxy(ctx context.Context, devicePath string) (*qmi.Client, error
 }
 
 // newQMIConnection 创建 QMI 连接并初始化 UIM 服务。
-// 参数 slot 是 QMI 卡槽编号（0-based，默认 0）。
+// 参数 slot 是 QMI 卡槽编号（1-based，与 qmicli Slot [1] 一致）。
 func newQMIConnection(ctx context.Context, qmiDevice string, slot byte) (*qmiConnection, error) {
 	if qmiDevice == "" {
 		qmiDevice = "/dev/wwan0qmi0"
@@ -131,4 +131,27 @@ func (c *qmiConnection) SendAPDU(ctx context.Context, channel byte, apdu []byte)
 // GetIMSI 通过 QMI 读取 IMSI。
 func (c *qmiConnection) GetIMSI(ctx context.Context) (string, error) {
 	return c.uim.GetIMSI(ctx)
+}
+
+// PowerOnAndActivateSession 确保 SIM 卡通电并激活 provisioning session。
+// 某些 modem 在 APDU 操作前需要先建立 session。
+func (c *qmiConnection) PowerOnAndActivateSession(ctx context.Context, aid []byte) error {
+	// 1. PowerOn SIM
+	if err := c.uim.PowerOnSIM(ctx, c.slot); err != nil {
+		fmt.Printf("QMI_DEBUG: PowerOnSIM failed (may be already on): %v\n", err)
+		// 不返回错误——可能已通电
+	}
+
+	// 2. ChangeProvisioningSession: 激活 Primary GW 会话
+	req := qmi.UIMChangeProvisioningSessionRequest{
+		SessionType:           0, // Primary GW Provisioning
+		Activate:              true,
+		ApplicationIdentifier: aid,
+	}
+	if err := c.uim.ChangeProvisioningSession(ctx, req); err != nil {
+		fmt.Printf("QMI_DEBUG: ChangeProvisioningSession failed: %v\n", err)
+		return fmt.Errorf("activate session: %w", err)
+	}
+	fmt.Printf("QMI_DEBUG: Provisioning session activated\n")
+	return nil
 }

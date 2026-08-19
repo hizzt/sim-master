@@ -55,23 +55,39 @@ func ParseUSIMAuthResponse(resp []byte) (enginesim.AKAResult, error) {
 	tag := body[0]
 	switch tag {
 	case 0xDB:
-		// 成功响应: Tag=0xDB, Len, RES, CK, IK
+		// 成功响应: DB <RES_len> <RES> [<CK> <IK>] 或 DB <RES_len> <RES> <CK_len> <CK> <IK_len> <IK>
+		// 参考 vohive parseUSIMAuthDB 支持两种格式
 		r := enginesim.AKAResult{}
-		pos := 2 // skip tag + len
-		if pos+16 > len(body) {
-			return r, fmt.Errorf("USIM auth response too short for RES: %d", len(body))
+		resLen := int(body[1])
+		if resLen < 4 || resLen > 16 || len(body) < 2+resLen+1 {
+			return r, fmt.Errorf("invalid USIM auth response: resLen=%d bodyLen=%d", resLen, len(body))
 		}
-		r.RES = body[pos : pos+16]
-		pos += 16
-		if pos+16 > len(body) {
-			return r, fmt.Errorf("USIM auth response too short for CK: %d", len(body))
+		r.RES = append([]byte(nil), body[2:2+resLen]...)
+		pos := 2 + resLen
+		remain := len(body) - pos
+		switch {
+		case remain == 32:
+			// 裸格式: CK 16 + IK 16
+			r.CK = append([]byte(nil), body[pos:pos+16]...)
+			r.IK = append([]byte(nil), body[pos+16:pos+32]...)
+		case remain >= 34:
+			// 带前缀: CK_len CK_16 IK_len IK_16 [Kc...]
+			ckLen := int(body[pos])
+			pos++
+			if ckLen != 16 || len(body) < pos+ckLen+1 {
+				return r, fmt.Errorf("invalid USIM auth CK: ckLen=%d", ckLen)
+			}
+			r.CK = append([]byte(nil), body[pos:pos+ckLen]...)
+			pos += ckLen
+			ikLen := int(body[pos])
+			pos++
+			if ikLen != 16 || len(body) < pos+ikLen {
+				return r, fmt.Errorf("invalid USIM auth IK: ikLen=%d", ikLen)
+			}
+			r.IK = append([]byte(nil), body[pos:pos+ikLen]...)
+		default:
+			return r, fmt.Errorf("USIM auth response too short for CK/IK: remain=%d", remain)
 		}
-		r.CK = body[pos : pos+16]
-		pos += 16
-		if pos+16 > len(body) {
-			return r, fmt.Errorf("USIM auth response too short for IK: %d", len(body))
-		}
-		r.IK = body[pos : pos+16]
 		return r, nil
 
 	case 0xDC:

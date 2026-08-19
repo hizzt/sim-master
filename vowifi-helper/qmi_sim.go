@@ -60,7 +60,7 @@ func (b *qmiSIMBackend) getIMSIViaQMI() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	conn, err := newQMIConnection(ctx, b.qmiDevice, 0)
+	conn, err := newQMIConnection(ctx, b.qmiDevice, 1)
 	if err != nil {
 		return "", fmt.Errorf("qmi get IMSI: %w", err)
 	}
@@ -85,7 +85,7 @@ func (b *qmiSIMBackend) CalculateAKA(rand16, autn16 []byte) (enginesim.AKAResult
 	defer cancel()
 
 	// 连接 QMI
-	conn, err := newQMIConnection(ctx, b.qmiDevice, 0)
+	conn, err := newQMIConnection(ctx, b.qmiDevice, 1)
 	if err != nil {
 		return enginesim.AKAResult{}, fmt.Errorf("qmi connect: %w", err)
 	}
@@ -122,12 +122,15 @@ func (b *qmiSIMBackend) calculateOnApp(
 		return enginesim.AKAResult{}, fmt.Errorf("resolve AID: %w", err)
 	}
 
-	// 打开逻辑通道
+	// 尝试打开逻辑通道
 	ch, err := conn.OpenLogicalChannel(ctx, aid)
 	if err != nil {
-		return enginesim.AKAResult{}, fmt.Errorf("open logical channel: %w", err)
+		// 回退到 basic channel 0
+		fmt.Printf("QMI_DEBUG: OpenLogicalChannel failed (%v), falling back to basic channel 0\n", err)
+		ch = 0
+	} else {
+		defer conn.CloseLogicalChannel(ctx, ch) // nolint: errcheck
 	}
-	defer conn.CloseLogicalChannel(ctx, ch) // nolint: errcheck
 
 	// 先尝试无 Le 的 APDU
 	apdu, err := BuildUSIMAuthAPDU(rand16, autn16, false)
