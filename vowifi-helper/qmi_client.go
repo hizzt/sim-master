@@ -25,13 +25,10 @@ func newQMIWithProxy(ctx context.Context, devicePath string) (*qmi.Client, error
 		devicePath = "/dev/wwan0qmi0"
 	}
 	opts := qmi.DefaultClientOptions()
-	opts.UseProxy = true
-	opts.ProxyPath = defaultProxyPath
-	opts.ProxyFallbackToRaw = true
+	opts.UseProxy = false
 	opts.SyncOnOpen = true
 	opts.QueryVersionOnOpen = false
 	opts.DefaultRequestTimeout = 30 * time.Second
-	opts.ProxyOpenTimeout = 10 * time.Second
 
 	client, err := qmi.NewClientWithOptions(ctx, devicePath, opts)
 	if err != nil {
