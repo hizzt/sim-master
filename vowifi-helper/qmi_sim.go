@@ -60,7 +60,7 @@ func (b *qmiSIMBackend) getIMSIViaQMI() (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	conn, err := newQMIConnection(ctx, b.qmiDevice)
+	conn, err := newQMIConnection(ctx, b.qmiDevice, 0)
 	if err != nil {
 		return "", fmt.Errorf("qmi get IMSI: %w", err)
 	}
@@ -85,7 +85,7 @@ func (b *qmiSIMBackend) CalculateAKA(rand16, autn16 []byte) (enginesim.AKAResult
 	defer cancel()
 
 	// 连接 QMI
-	conn, err := newQMIConnection(ctx, b.qmiDevice)
+	conn, err := newQMIConnection(ctx, b.qmiDevice, 0)
 	if err != nil {
 		return enginesim.AKAResult{}, fmt.Errorf("qmi connect: %w", err)
 	}
