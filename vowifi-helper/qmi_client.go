@@ -13,7 +13,7 @@ import (
 type qmiConnection struct {
 	client      *qmi.Client
 	uim         *qmi.UIMService
-	uimClientID byte          // 自己分配的 UIM clientID（用于 SendRequest）
+	uimClientID byte // 自己分配的 UIM clientID（用于 SendRequest）
 	slot        byte
 	devicePath  string
 	initialized bool
@@ -119,19 +119,20 @@ func (c *qmiConnection) ResolveISIMAID(ctx context.Context) ([]byte, error) {
 	return fallback, nil
 }
 
-// sessionInfoTLV 构造正确的 Session Information TLV（slot + session_type）。
+// sessionInfoTLV 构造 Session Information TLV（slot + session_type）。
 // QMI UIM 规范要求 TLV 0x01 包含 2 字节：slot + session_type。
-// session_type = 0（Primary GW Provisioning）。
+// OpenLogicalChannel 使用 NON_PROVISIONING_SLOT_1（值 4），与 libqmi 一致。
 func sessionInfoTLV(slot byte) qmi.TLV {
-	return qmi.TLV{Type: 0x01, Value: []byte{slot, 0x00}}
+	return qmi.TLV{Type: 0x01, Value: []byte{slot, 0x04}}
 }
 
 // OpenLogicalChannel 打开 USIM 逻辑通道，使用正确的 Session Information TLV。
+// TLV 顺序遵循 libqmi：0x01 (Session Info) 在前，0x10 (AID) 在后。
 func (c *qmiConnection) OpenLogicalChannel(ctx context.Context, aid []byte) (byte, error) {
 	aidValue := append([]byte{byte(len(aid))}, aid...)
 	tlvs := []qmi.TLV{
+		sessionInfoTLV(c.slot),        // Session info: slot + session_type
 		{Type: 0x10, Value: aidValue}, // AID: len + data
-		sessionInfoTLV(c.slot),         // Session info: slot + session_type
 	}
 
 	resp, err := c.client.SendRequest(ctx, qmi.ServiceUIM, c.uimClientID, qmi.UIMOpenLogicalChannel, tlvs)
@@ -156,9 +157,9 @@ func parseOpenLogicalChannelResponse(resp *qmi.Packet) (byte, error) {
 // CloseLogicalChannel 关闭逻辑通道，使用正确的 Session Information TLV。
 func (c *qmiConnection) CloseLogicalChannel(ctx context.Context, channel byte) error {
 	tlvs := []qmi.TLV{
-		sessionInfoTLV(c.slot),               // Session info: slot + session_type
-		{Type: 0x11, Value: []byte{channel}}, // Channel ID
-		{Type: 0x13, Value: []byte{0x01}},    // 标志
+		sessionInfoTLV(c.slot),               // TLV 0x01: Session info
+		{Type: 0x11, Value: []byte{channel}}, // TLV 0x11: Channel ID
+		{Type: 0x13, Value: []byte{0x01}},    // TLV 0x13: 标志
 	}
 
 	resp, err := c.client.SendRequest(ctx, qmi.ServiceUIM, c.uimClientID, qmi.UIMCloseLogicalChannel, tlvs)
@@ -185,9 +186,9 @@ func (c *qmiConnection) SendAPDU(ctx context.Context, channel byte, apdu []byte)
 	copy(value[2:], apdu)
 
 	tlvs := []qmi.TLV{
-		{Type: 0x10, Value: []byte{channel}}, // Channel ID
-		{Type: 0x02, Value: value},           // APDU data: len + data
-		sessionInfoTLV(c.slot),                // Session info: slot + session_type
+		sessionInfoTLV(c.slot),               // TLV 0x01: Session info
+		{Type: 0x10, Value: []byte{channel}}, // TLV 0x10: Channel ID
+		{Type: 0x02, Value: value},           // TLV 0x02: APDU data
 	}
 
 	resp, err := c.client.SendRequest(ctx, qmi.ServiceUIM, c.uimClientID, qmi.UIMSendAPDU, tlvs)
