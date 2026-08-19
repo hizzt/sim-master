@@ -31,17 +31,24 @@ func NewQMISIMBackend(serialDevice, qmiDevice string) (*qmiSIMBackend, error) {
 	// 验证 QMI 设备存在
 	// 不立即打开，留到 CalculateAKA 时按需连接
 
+	// 先暂停 ModemManager：它独占 AT 串口，若不先停，
+	// DirectSIM 的 AT 命令（读 IMSI/IMEI）会无响应而卡死。
+	// MM 恢复在 Close() 中执行。
+	b := &qmiSIMBackend{
+		serialDevice: serialDevice,
+		qmiDevice:    qmiDevice,
+	}
+	b.stopModemManager()
+
 	// 创建 AT 后端用于读 IMSI/IMEI
 	directSIM, err := externalsim.NewDirectSIM(serialDevice)
 	if err != nil {
+		b.restoreModemManager()
 		return nil, fmt.Errorf("open AT SIM interface: %w", err)
 	}
 
-	return &qmiSIMBackend{
-		serialDevice: serialDevice,
-		qmiDevice:    qmiDevice,
-		directSIM:    directSIM,
-	}, nil
+	b.directSIM = directSIM
+	return b, nil
 }
 
 // GetIMSI 通过 AT 端口读取 IMSI。
@@ -81,9 +88,7 @@ func (b *qmiSIMBackend) getIMSIViaQMI() (string, error) {
 // 8. 解析响应（0xDB 成功 / 0xDC 同步失败）
 // 9. 关闭逻辑通道
 func (b *qmiSIMBackend) CalculateAKA(rand16, autn16 []byte) (enginesim.AKAResult, error) {
-	// raw QMI 直连需要 ModemManager/qmi-proxy 停止运行
-	b.stopModemManager()
-	defer b.restoreModemManager()
+	// MM 已在 NewQMISIMBackend 暂停（Close 时恢复），raw QMI 直连可用
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -187,6 +192,8 @@ func (b *qmiSIMBackend) Close() error {
 			errs = append(errs, fmt.Sprintf("AT close: %v", err))
 		}
 	}
+	// MM 已在 NewQMISIMBackend 中暂停，这里恢复
+	b.restoreModemManager()
 	if len(errs) > 0 {
 		return errors.New(strings.Join(errs, "; "))
 	}
