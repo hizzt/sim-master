@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/1239t/swu-go/pkg/logger"
-	externalsim "github.com/1239t/swu-go/pkg/sim"
 	"github.com/1239t/vowifi-go/runtimehost"
 	"github.com/1239t/vowifi-go/runtimehost/carrier"
 	"github.com/1239t/vowifi-go/runtimehost/eventhost"
@@ -67,6 +66,8 @@ func run() int {
 	carrierOverrides := flag.String("carrier-overrides", "data/carrier_overrides.json", "VoWiFi carrier overrides JSON")
 	statusFile := flag.String("status-file", "", "atomic JSON status file")
 	controlSocket := flag.String("control-socket", "", "Unix control socket")
+	deviceBackend := flag.String("device-backend", "at", "SIM device backend: at or qmi")
+	qmiDevice := flag.String("qmi-device", "/dev/wwan0qmi0", "QMI device path (qmi backend)")
 	flag.Parse()
 	proxyEnabled := envEnabled("SIMADMIN_VOWIFI_PROXY_ENABLED")
 	proxyAddress := strings.TrimSpace(os.Getenv("SIMADMIN_VOWIFI_PROXY_ADDRESS"))
@@ -155,19 +156,18 @@ func run() int {
 		logger.Bool("require_sec_agree", carrierOptions.RegisterProfile.IncludeRequireSecAgree),
 		logger.String("pcscf_override", carrierOptions.PCSCFAddr))
 
-	directSIM, err := externalsim.NewDirectSIM(*serialDevice)
+	adapter, err := NewSIMBackend(*deviceBackend, *serialDevice, *qmiDevice)
 	if err != nil {
-		report.fail("open SIM AT interface: " + err.Error())
+		report.fail("open SIM interface: " + err.Error())
 		return 1
 	}
-	adapter := &simAdapter{inner: directSIM}
 	imsi, err := adapter.GetIMSI()
 	if err != nil {
 		_ = adapter.Close()
 		report.fail("read IMSI: " + err.Error())
 		return 1
 	}
-	imei, _ := directSIM.GetIMEI()
+	imei, _ := adapter.GetIMEI()
 	report.mutate(func(status *tunnelStatus) {
 		prefixLength := 6
 		if len(imsi) < prefixLength {

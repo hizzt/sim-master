@@ -1,0 +1,133 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/iniwex5/quectel-qmi-go/pkg/qmi"
+)
+
+// qmiConnection 封装 QMI 客户端连接和 UIM 服务。
+// 连接策略：qmi-proxy 优先，raw 回退。
+type qmiConnection struct {
+	client      *qmi.Client
+	uim         *qmi.UIMService
+	slot        byte
+	devicePath  string
+	initialized bool
+}
+
+// defaultProxyPath 是 qmi-proxy 抽象 socket 路径。
+// libqmi ≥1.18 默认监听 @qmi-proxy 抽象 Unix socket。
+const defaultProxyPath = "@qmi-proxy"
+
+// newQMIWithProxy 通过 qmi-proxy 优先连接 QMI 设备。
+// 连接策略：qmi-proxy → raw 回退。
+func newQMIWithProxy(ctx context.Context, devicePath string) (*qmi.Client, error) {
+	if devicePath == "" {
+		devicePath = "/dev/wwan0qmi0"
+	}
+	opts := qmi.DefaultClientOptions()
+	opts.UseProxy = true
+	opts.ProxyPath = defaultProxyPath
+	opts.ProxyFallbackToRaw = true
+	opts.SyncOnOpen = true
+	opts.QueryVersionOnOpen = false
+	opts.DefaultRequestTimeout = 30 * time.Second
+	opts.ProxyOpenTimeout = 10 * time.Second
+
+	client, err := qmi.NewClientWithOptions(ctx, devicePath, opts)
+	if err != nil {
+		return nil, fmt.Errorf("qmi connect to %s: %w", devicePath, err)
+	}
+	return client, nil
+}
+
+// newQMIConnection 创建 QMI 连接并初始化 UIM 服务。
+func newQMIConnection(ctx context.Context, qmiDevice string) (*qmiConnection, error) {
+	if qmiDevice == "" {
+		qmiDevice = "/dev/wwan0qmi0"
+	}
+
+	client, err := newQMIWithProxy(ctx, qmiDevice)
+	if err != nil {
+		return nil, err
+	}
+
+	uim, err := qmi.NewUIMServiceWithContext(ctx, client)
+	if err != nil {
+		client.Close()
+		return nil, fmt.Errorf("uim service: %w", err)
+	}
+
+	conn := &qmiConnection{
+		client:     client,
+		uim:        uim,
+		slot:       0, // 默认卡槽 0
+		devicePath: qmiDevice,
+	}
+	conn.initialized = true
+	return conn, nil
+}
+
+// Close 释放 QMI 资源。
+func (c *qmiConnection) Close() error {
+	if c.uim != nil {
+		_ = c.uim.Close()
+	}
+	if c.client != nil {
+		return c.client.Close()
+	}
+	return nil
+}
+
+// ResolveAID 获取 USIM 的完整 AID。
+// 优先通过 GetCardStatus 获取完整 AID，失败回退到硬编码前缀。
+func (c *qmiConnection) ResolveAID(ctx context.Context) ([]byte, error) {
+	aid, err := c.uim.GetUSIMAID(ctx)
+	if err == nil && len(aid) > 0 {
+		return aid, nil
+	}
+	// 回退：ISO 7816-4 部分 AID 选择，使用 7 字节前缀
+	fallback := []byte{0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x02}
+	return fallback, nil
+}
+
+// ResolveISIMAID 获取 ISIM 的完整 AID。
+func (c *qmiConnection) ResolveISIMAID(ctx context.Context) ([]byte, error) {
+	aid, err := c.uim.GetISIMAID(ctx)
+	if err == nil && len(aid) > 0 {
+		return aid, nil
+	}
+	fallback := []byte{0xA0, 0x00, 0x00, 0x00, 0x87, 0x10, 0x04}
+	return fallback, nil
+}
+
+// OpenLogicalChannel 打开 USIM 逻辑通道。
+func (c *qmiConnection) OpenLogicalChannel(ctx context.Context, aid []byte) (byte, error) {
+	ch, err := c.uim.OpenLogicalChannel(ctx, c.slot, aid)
+	if err != nil {
+		return 0, fmt.Errorf("open logical channel: %w", err)
+	}
+	return ch, nil
+}
+
+// CloseLogicalChannel 关闭逻辑通道。
+func (c *qmiConnection) CloseLogicalChannel(ctx context.Context, channel byte) error {
+	return c.uim.CloseLogicalChannel(ctx, c.slot, channel)
+}
+
+// SendAPDU 在逻辑通道上发送 APDU。
+func (c *qmiConnection) SendAPDU(ctx context.Context, channel byte, apdu []byte) ([]byte, error) {
+	resp, err := c.uim.SendAPDU(ctx, c.slot, channel, apdu)
+	if err != nil {
+		return nil, fmt.Errorf("send apdu: %w", err)
+	}
+	return resp, nil
+}
+
+// GetIMSI 通过 QMI 读取 IMSI。
+func (c *qmiConnection) GetIMSI(ctx context.Context) (string, error) {
+	return c.uim.GetIMSI(ctx)
+}

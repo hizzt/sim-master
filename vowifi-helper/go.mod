@@ -3,17 +3,20 @@ module github.com/techblack/sim-master/vowifi-helper
 go 1.26.3
 
 require (
-	github.com/1239t/swu-go v0.0.3
-	github.com/1239t/vowifi-go v0.0.0
-	github.com/jane-rui/vowifi-go v0.0.0-20260708060225-849dd11417bc
-	github.com/warthog618/sms v0.3.0
-)
+		github.com/1239t/swu-go v0.0.3
+		github.com/1239t/vowifi-go v0.0.0
+		github.com/iniwex5/quectel-qmi-go v0.6.0
+		github.com/jane-rui/vowifi-go v0.0.0-20260708060225-849dd11417bc
+		github.com/warthog618/sms v0.3.0
+	)
 
 replace github.com/1239t/vowifi-go => ./third_party/vowifi-go
 
 replace github.com/jane-rui/vowifi-go => ./third_party/jane-vowifi-go
 
 replace github.com/emiago/sipgo => ./third_party/vowifi-go/third_party/sipgo
+
+replace github.com/iniwex5/quectel-qmi-go => ./third_party/quectel-qmi-go
 
 require (
 	github.com/emiago/sipgo v1.4.0 // indirect
