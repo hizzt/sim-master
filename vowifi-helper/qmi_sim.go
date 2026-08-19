@@ -81,6 +81,10 @@ func (b *qmiSIMBackend) getIMSIViaQMI() (string, error) {
 // 8. 解析响应（0xDB 成功 / 0xDC 同步失败）
 // 9. 关闭逻辑通道
 func (b *qmiSIMBackend) CalculateAKA(rand16, autn16 []byte) (enginesim.AKAResult, error) {
+	// raw QMI 直连需要 ModemManager/qmi-proxy 停止运行
+	b.stopModemManager()
+	defer b.restoreModemManager()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
