@@ -670,6 +670,13 @@ export interface VowifiUpstreamProxyRequest {
   password?: string
 }
 
+/** SIM AKA 后端选择："at"（AT+CSIM）或 "qmi"（QMI UIM 原生 APDU）。 */
+export type VowifiSimBackend = 'at' | 'qmi'
+
+export interface VowifiSimBackendUpdateRequest {
+  backend: VowifiSimBackend
+}
+
 export interface VowifiTunnelStatus {
   stage: VowifiTunnelStage
   running: boolean

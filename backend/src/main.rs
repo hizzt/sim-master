@@ -10,7 +10,7 @@ use axum::{
     http::{StatusCode, Uri},
     middleware,
     response::{IntoResponse, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use clap::{Args as ClapArgs, Parser, Subcommand};
@@ -1024,6 +1024,14 @@ async fn main() -> Result<()> {
         .route(
             "/api/vowifi/tunnel/stop",
             post(stop_vowifi_tunnel_handler).options(options_handler),
+        )
+        .route(
+            "/api/vowifi/sim-backend",
+            get(get_vowifi_sim_backend_handler).options(options_handler),
+        )
+        .route(
+            "/api/vowifi/sim-backend",
+            put(update_vowifi_sim_backend_handler).options(options_handler),
         )
         .route(
             "/api/vowifi/call/dial",

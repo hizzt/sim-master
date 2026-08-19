@@ -5,8 +5,11 @@ import {
   Button,
   Chip,
   CircularProgress,
+  FormControl,
   FormControlLabel,
+  MenuItem,
   Paper,
+  Select,
   Switch,
   TextField,
   Typography,
@@ -26,6 +29,7 @@ import {
 import {
   api,
   type ImsStatusResponse,
+  type VowifiSimBackend,
   type VowifiSmsPathVerificationResult,
   type VowifiTunnelStatus,
   type VowifiVerificationCheck,
@@ -133,6 +137,7 @@ export default function VoWifi() {
   const [proxyPassword, setProxyPassword] = useState('')
   const [proxyHasPassword, setProxyHasPassword] = useState(false)
   const [proxyLoaded, setProxyLoaded] = useState(false)
+  const [simBackend, setSimBackend] = useState<VowifiSimBackend>('at')
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -146,6 +151,12 @@ export default function VoWifi() {
       setTunnel(nextTunnel)
       if (nextTunnel?.phone_number) setSmsPhoneNumber((current) => current || nextTunnel.phone_number)
       setVerification(verificationResponse.data ?? null)
+      try {
+        const backendResponse = await api.getVowifiSimBackend()
+        setSimBackend(backendResponse.data === 'qmi' ? 'qmi' : 'at')
+      } catch {
+        // 旧版后端无此端点时保持默认 at
+      }
       if (!nextTunnel?.running) {
         const imsResponse = await api.getImsStatus()
         setStatus(imsResponse.data ?? null)
@@ -207,6 +218,19 @@ export default function VoWifi() {
       setError(cause instanceof Error ? cause.message : 'IMS 驻网请求失败')
     } finally {
       setRegistering(false)
+    }
+  }
+
+  const updateSimBackend = async (backend: VowifiSimBackend) => {
+    setSimBackend(backend)
+    try {
+      await api.updateVowifiSimBackend(backend)
+      setError(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : '保存 SIM AKA 后端设置失败')
+      // 回滚显示值
+      const backendResponse = await api.getVowifiSimBackend().catch(() => null)
+      setSimBackend(backendResponse?.data === 'qmi' ? 'qmi' : 'at')
     }
   }
 
@@ -417,6 +441,23 @@ export default function VoWifi() {
                 />
               </Box>
             )}
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 2 }}>
+              <FormControl size="small" sx={{ minWidth: 220 }}>
+                <Select
+                  value={simBackend}
+                  onChange={(event) => void updateSimBackend(event.target.value as VowifiSimBackend)}
+                  disabled={tunnelBusy || loading}
+                  inputProps={{ 'aria-label': 'SIM AKA 后端' }}
+                >
+                  <MenuItem value="at">AT（AT+CSIM，默认）</MenuItem>
+                  <MenuItem value="qmi">QMI（原生 APDU）</MenuItem>
+                </Select>
+              </FormControl>
+              <Typography variant="body2" color="text.secondary">
+                SIM AKA 后端：AT 走串口 AT+CSIM；QMI 走 /dev/wwan0qmi0 原生 USIM APDU。下次建立隧道时生效。
+              </Typography>
+            </Box>
 
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' }, columnGap: 3, mt: 1 }}>
               <StatusField label="SWu 会话"><BoolChip value={tunnel?.established} yes="已建立" no={tunnelStageLabel(tunnel?.stage)} /></StatusField>

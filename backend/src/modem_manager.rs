@@ -2898,7 +2898,15 @@ pub async fn prepare_vowifi_tunnel_config(
         .find(|(_, port_type)| *port_type == MM_MODEM_PORT_TYPE_AT)
         .map(|(port, _)| modem_device_path(port))
         .ok_or_else(|| format!("Modem {modem_id} does not expose an AT port"))?;
-    if !sim_aka_at_available(conn, &modem_path).await {
+    // 读取持久化的 SIM AKA 后端选择（面板 UI 配置）。
+    // QMI 后端不依赖 AT+CSIM（B08 固件不实现），因此跳过该可用性检查。
+    let device_backend = db
+        .get_app_setting(crate::vowifi_tunnel::DEVICE_BACKEND_SETTING_KEY)
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "at".to_string());
+    if device_backend != "qmi" && !sim_aka_at_available(conn, &modem_path).await {
         return Err(format!(
             "Modem {modem_id} did not accept AT+CSIM, which is required for EAP-AKA"
         ));
@@ -2971,6 +2979,8 @@ pub async fn prepare_vowifi_tunnel_config(
         proxy_address: String::new(),
         proxy_username: String::new(),
         proxy_password: String::new(),
+        device_backend,
+        qmi_device: "/dev/wwan0qmi0".to_string(),
     })
 }
 

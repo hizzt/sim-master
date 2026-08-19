@@ -80,6 +80,7 @@ import type {
   VowifiCallAudio,
   VowifiCallAudioFormat,
   VowifiCallStatus,
+  VowifiSimBackend,
   VowifiSmsPathVerificationResult,
   VowifiTunnelStatus,
   VowifiUpstreamProxyRequest,
@@ -1016,6 +1017,18 @@ class SimAdminCurrentAPI {
       method: 'POST',
       body: JSON.stringify({}),
       timeoutMs: 20000,
+    })
+  }
+
+  async getVowifiSimBackend() {
+    return request<ApiResponse<string>>('/vowifi/sim-backend')
+  }
+
+  async updateVowifiSimBackend(backend: VowifiSimBackend) {
+    return request<ApiResponse<string>>('/vowifi/sim-backend', {
+      method: 'PUT',
+      body: JSON.stringify({ backend }),
+      timeoutMs: 10000,
     })
   }
 

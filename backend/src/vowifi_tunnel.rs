@@ -22,6 +22,9 @@ const STATUS_FILENAME: &str = "vowifi-tunnel.json";
 const CONTROL_FILENAME: &str = "vowifi-control.sock";
 const CARRIER_OVERRIDES_FILENAME: &str = "data/carrier_overrides.json";
 const UPSTREAM_PROXY_SETTING_KEY: &str = "vowifi_upstream_proxy";
+/// SIM AKA 后端选择：`at`（默认，AT+CSIM）或 `qmi`（QMI UIM 原生 APDU）。
+/// 存储为 app_settings 键，面板 UI 可在 VoWiFi 设置页切换。
+pub(crate) const DEVICE_BACKEND_SETTING_KEY: &str = "vowifi_device_backend";
 const MAX_CALL_AUDIO_RAW_BYTES: usize = 1_920_000;
 const MAX_CALL_WAV_CONTAINER_OVERHEAD: usize = 64 * 1024;
 
@@ -42,6 +45,8 @@ pub struct VowifiTunnelLaunchConfig {
     pub proxy_address: String,
     pub proxy_username: String,
     pub proxy_password: String,
+    pub device_backend: String,
+    pub qmi_device: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1223,6 +1228,19 @@ impl VowifiTunnelManager {
         config.proxy_username = proxy.username;
         config.proxy_password = proxy.password;
 
+        // 应用持久化的 SIM AKA 后端选择（QMI 或 AT）。
+        // prepare_vowifi_tunnel_config 已读取一次，这里兜底覆盖，
+        // 确保任何路径下 helper 都使用当前保存的后端。
+        if let Some(database) = &self.database {
+            if let Ok(Some(backend)) =
+                database.get_app_setting(DEVICE_BACKEND_SETTING_KEY)
+            {
+                if !backend.is_empty() {
+                    config.device_backend = backend;
+                }
+            }
+        }
+
         // Keep the previous atomic status file as the helper's bounded receive
         // history handoff. The new helper restores only successfully RP-ACKed
         // SMS entries and overwrites all live process/tunnel fields on startup.
@@ -1265,6 +1283,10 @@ impl VowifiTunnelManager {
             .arg(&config.epdg_fqdn)
             .arg("--serial")
             .arg(&config.serial_device)
+            .arg("--device-backend")
+            .arg(&config.device_backend)
+            .arg("--qmi-device")
+            .arg(&config.qmi_device)
             .arg("--local-ip")
             .arg(&config.local_ip)
             .arg("--access-interface")

@@ -3705,6 +3705,70 @@ pub async fn stop_vowifi_tunnel_handler(State(app): State<AppState>) -> impl Int
     }
 }
 
+/// GET /api/vowifi/sim-backend
+///
+/// 返回当前持久化的 SIM AKA 后端（"at" 或 "qmi"），供面板 VoWiFi 设置页显示。
+pub async fn get_vowifi_sim_backend_handler(
+    State(app): State<AppState>,
+) -> (StatusCode, Json<ApiResponse<String>>) {
+    let backend = app
+        .database
+        .get_app_setting(crate::vowifi_tunnel::DEVICE_BACKEND_SETTING_KEY)
+        .ok()
+        .flatten()
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "at".to_string());
+    (
+        StatusCode::OK,
+        Json(ApiResponse::success_with_message(
+            "VoWiFi SIM AKA backend retrieved",
+            backend,
+        )),
+    )
+}
+
+/// PUT /api/vowifi/sim-backend
+///
+/// 持久化 SIM AKA 后端选择（`at` 或 `qmi`）。影响下一次隧道启动时 helper
+/// 使用的 AKA 通路；无需重启服务。
+#[derive(Deserialize)]
+pub struct VowifiSimBackendUpdateRequest {
+    pub backend: String,
+}
+
+pub async fn update_vowifi_sim_backend_handler(
+    State(app): State<AppState>,
+    Json(payload): Json<VowifiSimBackendUpdateRequest>,
+) -> impl IntoResponse {
+    let backend = payload.backend.trim().to_string();
+    if backend != "at" && backend != "qmi" {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<String>::error(
+                "backend must be \"at\" or \"qmi\"".to_string(),
+            )),
+        );
+    }
+    match app
+        .database
+        .set_app_setting(crate::vowifi_tunnel::DEVICE_BACKEND_SETTING_KEY, &backend)
+    {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ApiResponse::<String>::success_with_message(
+                "VoWiFi SIM AKA backend saved",
+                backend,
+            )),
+        ),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiResponse::<String>::error(format!(
+                "Failed to save VoWiFi SIM AKA backend: {error}"
+            ))),
+        ),
+    }
+}
+
 /// POST /api/vowifi/call/dial
 ///
 /// Starts a real outbound IMS INVITE over the active SWu session. The helper
