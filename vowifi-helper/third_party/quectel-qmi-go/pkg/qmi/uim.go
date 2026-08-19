@@ -588,9 +588,11 @@ func (u *UIMService) UnblockPIN(ctx context.Context, pinID uint8, puk, newPIN st
 
 func buildOpenLogicalChannelTLVs(slot uint8, aid []byte) []TLV {
 	value := append([]byte{byte(len(aid))}, aid...)
+	// qcom-soc 基带需要 TLV 0x01 = [slot, session_type] 共 2 字节
+	// session_type = 0x04 (NonProvisioningSlot1)
 	return []TLV{
+		{Type: 0x01, Value: []byte{slot, 0x04}},
 		{Type: 0x10, Value: value},
-		{Type: 0x01, Value: []byte{slot}},
 	}
 }
 
@@ -612,7 +614,7 @@ func buildUIMFileTLV(fileID uint16, path []uint8) TLV {
 
 func buildCloseLogicalChannelTLVs(slot uint8, channel uint8) []TLV {
 	return []TLV{
-		{Type: 0x01, Value: []byte{slot}},
+		{Type: 0x01, Value: []byte{slot, 0x04}},
 		{Type: 0x11, Value: []byte{channel}},
 		{Type: 0x13, Value: []byte{0x01}},
 	}
@@ -626,7 +628,7 @@ func buildSendAPDUTLVs(slot uint8, channel uint8, command []byte) []TLV {
 	return []TLV{
 		{Type: 0x10, Value: []byte{channel}},
 		{Type: 0x02, Value: value},
-		{Type: 0x01, Value: []byte{slot}},
+		{Type: 0x01, Value: []byte{slot, 0x04}},
 	}
 }
 
